@@ -27,8 +27,7 @@ try:
         retriever=retriever,
         return_source_documents=True
     )
-except Exception as e:
-    print(f"HATA: Veritabanı yüklenemedi: {e}")
+except Exception:
     qa_chain = None
 
 @app.route('/')
@@ -38,33 +37,37 @@ def home():
 @app.route('/ask', methods=['POST'])
 def ask():
     if not qa_chain:
-        return jsonify({"error": "Veritabanı yüklü değil."}), 500
+        return jsonify({"error": "Sistem hatası"}), 500
     
     data = request.json
-    user_question = data.get('question')
+    question = data.get('question')
     
-    if not user_question:
-        return jsonify({"error": "Soru boş olamaz."}), 400
+    if not question:
+        return jsonify({"error": "Boş soru"}), 400
 
     try:
-        result = qa_chain.invoke({"query": user_question})
+        result = qa_chain.invoke({"query": question})
         answer = result["result"]
+        source_docs = result.get("source_documents", [])
         
-        source_documents = result.get("source_documents", [])
-        sources = []
-        for doc in source_documents:
-            source_name = os.path.basename(doc.metadata.get("source", ""))
-            if source_name and source_name not in sources:
-                sources.append(source_name)
+        suggestions = []
+        
+        for doc in source_docs:
+            meta_url = doc.metadata.get("url", "").strip()
+            meta_title = doc.metadata.get("title", "").strip()
+            
+            if meta_url and meta_url.startswith("http"):
+                display_title = meta_title if len(meta_title) < 40 else "İlgili Sayfaya Git"
+                suggestions.append({"title": display_title, "url": meta_url})
+                break
         
         return jsonify({
             "answer": answer,
-            "sources": sources
+            "suggestions": suggestions
         })
 
-    except Exception as e:
-        print(f"Hata: {e}")
-        return jsonify({"error": "Bir hata oluştu."}), 500
+    except Exception:
+        return jsonify({"error": "Hata oluştu"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
